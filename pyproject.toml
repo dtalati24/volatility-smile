@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "volatility-smile"
+version = "0.1.0"
+description = "Implied-volatility smile for index options: least squares spline base plus Gaussian bells at delta points, with a fast calibrator."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    # scipy 1.18+ imports a new extension module that this machine's
+    # Windows application-control policy blocks, so stay below it.
+    "scipy>=1.11,<1.18",
+    # matplotlib 3.11.2's font extension (ft2font) is blocked by the same policy.
+    "matplotlib>=3.8,<3.11.2",
+    "pandas>=2.0",
+    "yfinance>=0.2.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,48 @@
+# Whole SPX and RUT option boards every 15 minutes in US market hours, saved on
+# the data-live branch (see scripts/record.py and docs/recorder.md).
+name: Record option boards
+
+on:
+  schedule:
+    # 13:00-21:15 UTC on weekdays covers 09:30-16:00 New York in summer and
+    # winter time; record.py skips runs outside 09:25-16:20 New York.
+    - cron: "*/15 13-20 * * 1-5"
+    - cron: "0,15 21 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Record now even outside market hours
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: record-option-boards
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data-live
+          path: live
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "yfinance==1.7.0" "pandas==3.0.5"
+      - run: python scripts/record.py --out live/snapshots ${{ inputs.force && '--force' || '' }}
+      - name: Commit the snapshots
+        working-directory: live
+        run: |
+          git add snapshots
+          if git diff --cached --quiet; then echo "nothing recorded"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
