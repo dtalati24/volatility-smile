@@ -261,6 +261,12 @@ points across the strikes while the spline's are noise around 0.
 | Fitting every button exactly | buttons no quote can see went to ±20 vol points on noise; held at their start |
 | Offsets re-fitted "around" by the automatic fitter | rejected: the same button's fitted part would cancel the click; offsets sit on top instead |
 | Automatic spline refit when stale | not chosen: an alert instead, so the trader decides |
+| Which delta the automatic fitter uses between Refits (figure below) | compared on the saved slices: spline delta and frozen delta (positions recorded from the final smile at the last Refit) both fit as well as final delta and are linear (~0.5 ms). Spline delta moves the smile by up to 0.2 vol points on the first tick with no market move (SPX 1 week wings); frozen delta moves it by nothing. A 5Δ put click sits nearer the money under both than under final delta. Frozen delta proposed, not built yet |
+
+![Final, spline and frozen delta](docs/images/delta_modes.png)
+
+*`explorations/delta_modes.py`. Left: the first automatic fit after a Refit
+with no market move. Right: a +2 vol point click on the 5Δ put.*
 
 ### Data
 
