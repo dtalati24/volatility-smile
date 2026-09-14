@@ -1,4 +1,4 @@
-# volatility-smile
+﻿# volatility-smile
 
 An implied-volatility smile for index options (SPX and RUT), fitted to
 market mids, with a fast calibrator, a live data recorder and a local web app
@@ -32,7 +32,7 @@ detail is in [`docs/`](docs).
 ```bash
 py -3.14 -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"
-.venv/Scripts/python -m pytest -p no:warnings      # 227 tests, about 20-30 s
+.venv/Scripts/python -m pytest -p no:warnings      # 231 tests, about 20-30 s
 .venv/Scripts/python app/server.py                 # Smile Board on http://127.0.0.1:8050
 ```
 
@@ -97,7 +97,7 @@ drive its error.
   1. PM-settled weekly contracts (SPXW, RUTW) preferred when a date also has
      AM-settled ones, so every quote shares one expiry time.
   2. Two-sided quotes only (bid > 0, ask > bid).
-  3. **Forward from put-call parity**: median of C − P + K over the 20 strikes
+  3. **Forward from put-call parity**: median of C âˆ’ P + K over the 20 strikes
      nearest spot.
   4. Out-of-the-money quotes only; implied vols recomputed from mid, bid and
      ask (Yahoo's own vols can disagree between call and put at one strike).
@@ -107,7 +107,7 @@ drive its error.
 - Least squares **cubic spline of mid vol against k = ln(K/F)**, with
   interior knots (default **3**) at equal quantiles of the quoted strikes. A
   linear fit, under 1 ms.
-- **Beyond the quotes**, total variance w = vol² τ continues in a **straight
+- **Beyond the quotes**, total variance w = volÂ² Ï„ continues in a **straight
   line** from the spline's value and slope, with the slope kept in [0, 2]
   (never turning down; Lee's large-strike bound).
 
@@ -116,11 +116,11 @@ drive its error.
     sigma(K) = max(0, base_vol(K) + sum_i button_i * exp(-(u - u_i)^2 / (2 w_i^2)))
     u        = -d1(F, K, tau, sigma(K))
 
-- **11 buttons** at 1, 2, 5, 10, 25Δ puts, ATM (50Δ) and 25 … 1Δ calls. A
+- **11 buttons** at 1, 2, 5, 10, 25Î” puts, ATM (50Î”) and 25 â€¦ 1Î” calls. A
   button of +0.01 adds exactly 1 vol point at its node.
-- **Widths** = k × average distance to the neighbouring nodes (k = 0.4), so
+- **Widths** = k Ã— average distance to the neighbouring nodes (k = 0.4), so
   tip bells are narrow and middle bells wide.
-- The **1Δ put and call bells hold flat past their node**, so the far wings
+- The **1Î” put and call bells hold flat past their node**, so the far wings
   carry on at the lifted level instead of dropping back onto the spline.
 - **Bells at the final smile's delta** (default): u uses the finished vol,
   so every node sits at its true delta. Each strike's vol is therefore solved
@@ -146,14 +146,14 @@ Objective, with the spline fixed:
     `d vol_i / d button_j = bell_j(u_i) / (1 - g_i)`,
     `g_i = (bell slopes . buttons) * d2 / vol`.
     Vols between steps come from Newton started at the linear prediction
-    (vol + J × step); the final answer is checked with the full solve.
+    (vol + J Ã— step); the final answer is checked with the full solve.
   - Hands over to the general solver, with the reason recorded, when its
-    maths does not apply (vol floor binds, ambiguous vol, g ≥ 1, no
+    maths does not apply (vol floor binds, ambiguous vol, g â‰¥ 1, no
     convergence).
 - **General solver**: `scipy.optimize.least_squares` with finite differences,
   kept as the reference and the fallback.
 - Buttons no quote can see (bell below 0.001 at every quote) are held at
-  their start; otherwise noise sends them to their ±20 vol point bounds.
+  their start; otherwise noise sends them to their Â±20 vol point bounds.
 - **SVI** (raw parametrisation, 8 starts, Lee wing bound) is fitted to the
   same mids as a benchmark only.
 
@@ -165,15 +165,17 @@ Objective, with the spline fixed:
   stiffness so noisy quotes move them less.
 - **Offsets**: a trader's manual clicks sit on top of the fitted bells and
   are never undone by the automatic fitter; Refit clears them.
-- **Stale-spline alert** when the bells' fit error exceeds 1.5× the error
+- **Stale-spline alert** when the bells' fit error exceeds 1.5Ã— the error
   after the last Refit, a fitted button passes 2 vol points, or a vol becomes
   ambiguous.
 
 ### 6. Live recorder ([docs/recorder.md](docs/recorder.md))
 
 - GitHub Actions records the **whole SPX and RUT boards every 15 minutes**
-  in US market hours (about 20,000 contracts, ~310 KB per snapshot) to the
-  `data-live` branch. Skips holidays (no SPX option traded that day).
+  in US market hours from Cboe's delayed-quotes feed (Yahoo as a fallback):
+  about 40,000 contracts, ~870 KB per snapshot, with **sizes at the best bid
+  and ask** and Cboe's own vol and delta, to the `data-live` branch. Skips
+  holidays (no SPX option traded that day).
 - `marketdata.load_snapshot(path, expiry)` turns any snapshot into a slice.
 
 ---
@@ -187,7 +189,7 @@ server, no front-end libraries.
   spline + bells (orange), SVI (green, optional), forward line, node ticks,
   hover tooltips; zoom buttons and drag to pan.
 - Option board: bid, ask, mid, model price, model delta, bid/mid/ask vols,
-  model vol, model − mid, volume, open interest; model vols outside the
+  model vol, model âˆ’ mid, volume, open interest; model vols outside the
   bid/ask shaded.
 - 11 bell buttons: click raises your offset, Ctrl + click lowers it; each
   shows fitted + offset.
@@ -217,14 +219,14 @@ Each button means "vol at this delta": a trader's natural way to mark a smile.
 | Tried | Outcome and reasoning |
 |---|---|
 | One fixed bell width | rejected: narrow enough for the tips leaves holes in the middle; wide (0.6) is ill-conditioned (condition number 616) |
-| Width = k × neighbour distance, k = 0.4 | **adopted** (condition number 1.3) |
-| Standalone: ATM vol + bells, straight line past 1Δ | replaced: the bells are meant to adjust an existing smile, not rebuild it |
+| Width = k Ã— neighbour distance, k = 0.4 | **adopted** (condition number 1.3) |
+| Standalone: ATM vol + bells, straight line past 1Î” | replaced: the bells are meant to adjust an existing smile, not rebuild it |
 | **Overlay on a base smile** | **adopted** |
-| Bells at deltas from ATM vol | rejected: on a steep put wing a "1Δ" node at ATM vol can sit on a ~13Δ put |
+| Bells at deltas from ATM vol | rejected: on a steep put wing a "1Î”" node at ATM vol can sit on a ~13Î” put |
 | **Bells at the final smile's delta** | **adopted** (chosen: nodes at true deltas, regions barely move); spline delta kept as an option |
-| Repeating vol → delta → vol to solve it | rejected: does not settle from ±0.75 vol point alternating buttons; replaced by bracketing + safeguarded Newton |
-| Last bells fading past 1Δ | replaced: a +0.41 vol point 1Δ call bell dropped the curve back onto a spline 0.4-0.7 vol points under the far calls |
-| **1Δ bells held flat past their node** | **adopted**: same RMSE, far-call misses cut from −0.66/−0.61/−0.44 to −0.42/−0.36/−0.19 |
+| Repeating vol â†’ delta â†’ vol to solve it | rejected: does not settle from Â±0.75 vol point alternating buttons; replaced by bracketing + safeguarded Newton |
+| Last bells fading past 1Î” | replaced: a +0.41 vol point 1Î” call bell dropped the curve back onto a spline 0.4-0.7 vol points under the far calls |
+| **1Î” bells held flat past their node** | **adopted**: same RMSE, far-call misses cut from âˆ’0.66/âˆ’0.61/âˆ’0.44 to âˆ’0.42/âˆ’0.36/âˆ’0.19 |
 
 ### The base smile
 
@@ -238,7 +240,7 @@ Each button means "vol at this delta": a trader's natural way to mark a smile.
 | SVI without a wing bound | fitted b = 10, rho = 0.99 on the 1-week slice, extrapolating to 89% vol; bound added |
 
 Why SVI fits worse: five parameters and one fixed hyperbola shape. On the
-3-month slice its misses swing +0.12, −0.14, −0.15, +0.02, +0.20, −0.06 vol
+3-month slice its misses swing +0.12, âˆ’0.14, âˆ’0.15, +0.02, +0.20, âˆ’0.06 vol
 points across the strikes while the spline's are noise around 0.
 
 ### The fitter
@@ -256,7 +258,7 @@ points across the strikes while the spline's are noise around 0.
 | Compiled kernels (numba) | tested at 0.3-2 ms per fit with identical buttons; not adopted for now: a new dependency, a compile delay per process, and a second implementation to keep in step |
 | Step tolerance 1e-9 | too tight: below the objective's rounding noise, a converged fit looked stuck; 1e-7 |
 | Newton accepting any in-bracket step | a review found it could bounce between two vols and return a non-root; rtsafe halving rule + bisection safety net |
-| Fitting every button exactly | buttons no quote can see went to ±20 vol points on noise; held at their start |
+| Fitting every button exactly | buttons no quote can see went to Â±20 vol points on noise; held at their start |
 | Offsets re-fitted "around" by the automatic fitter | rejected: the same button's fitted part would cancel the click; offsets sit on top instead |
 | Automatic spline refit when stale | not chosen: an alert instead, so the trader decides |
 
@@ -272,6 +274,8 @@ points across the strikes while the spline's are noise around 0.
 | **RUT** | **added**: European exercise, cash-settled, rougher quotes |
 | Free historical intraday option quotes | none exist; **record our own** every 15 minutes |
 | Recording every 1 minute | declined: GitHub schedules at most every 5 minutes, ~8,200 billed minutes a month, Yahoo blocking risk, ~2.5 GB a month |
+| **Cboe delayed-quotes feed** for the recorder | **adopted** (Yahoo kept as fallback): sizes at the best bid and ask, up to 2.8x the two-sided quotes per expiry, one request per index; same mids and forwards where both quote |
+| Scheduled runs on the quarter hours | moved to :07/:22/:37/:52: on the first trading day none of them fired for 4 hours |
 
 ### App
 
@@ -286,13 +290,13 @@ points across the strikes while the spline's are noise around 0.
 
 ## Testing and review
 
-- **227 tests** (pytest): hand-computed values, independent solvers (brentq)
+- **231 tests** (pytest): hand-computed values, independent solvers (brentq)
   for per-strike vols, finite differences for the Jacobian, fast vs general
   fitter on every saved slice, recovery of known buttons, every hand-over
   path, the web API end to end.
-- **Mutation checks**: deliberately broken copies of key lines (the 1 / (1 − g)
+- **Mutation checks**: deliberately broken copies of key lines (the 1 / (1 âˆ’ g)
   term, held buttons, stiffness sign, ambiguity checks, warm start, the Newton
-  halving rule, offsets in drawing, …) to confirm a test fails for each.
+  halving rule, offsets in drawing, â€¦) to confirm a test fails for each.
 - **Independent review** of every stage (a separate agent running the code);
   every finding was fixed or documented as a known limitation.
 
@@ -335,11 +339,12 @@ tests/             pytest suite
 - **Snapshot replay** in the Smile Board (time slider), driving the automatic
   fitter; a stability study of the buttons through the day.
 - **Arbitrage checks**: butterfly and calendar; narrow bells can create
-  butterfly arbitrage (5Δ put +1 vol point at k = 0.4).
+  butterfly arbitrage (5Î” put +1 vol point at k = 0.4).
 - **Weights** by spread, volume or open interest (fits are unweighted).
-- **More nodes** beyond 1Δ; better spline wings (the 9100 SPX call is ~1 vol
+- **More nodes** beyond 1Î”; better spline wings (the 9100 SPX call is ~1 vol
   point off).
 - **Discounting** (about 0.02-0.07 vol points at 4% rates) and 09:30 expiry
   for AM-settled contracts.
 - **Full surface** across expiries.
-- Yahoo option quotes are delayed about 15 minutes; data is for personal use.
+- Yahoo and Cboe option quotes are delayed about 15 minutes; data is for
+  personal use. Sizes are recorded but not used in fits yet.

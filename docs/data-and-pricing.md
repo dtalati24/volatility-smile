@@ -85,7 +85,8 @@ points.
   on `K` near spot to get the discount factor as well as the forward.
 - **Quote time.** Taken from the latest trade, while bid/ask are a snapshot at
   fetch time. Fine for the saved files (fetched after the close); a thin
-  expiry or an overnight fetch could misdate it.
+  expiry or an overnight fetch could misdate it. Recorded snapshots use their
+  own quote time instead ([recorder.md](recorder.md)).
 - **AM-settled-only dates** still get a 16:00 expiry (settlement is at the
   morning open), which matters only for very short expiries.
 - Yahoo data is for personal use; check its terms before publishing the CSVs.

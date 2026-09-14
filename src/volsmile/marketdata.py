@@ -131,15 +131,17 @@ def save_slice(s: Slice, path) -> None:
 
 def load_snapshot(path, expiry: str) -> Slice:
     """One expiry of a whole-board snapshot written by scripts/record.py, built
-    like any slice. The quote time is the fetch time (Yahoo's option quotes
-    are typically delayed by about 15 minutes)."""
+    like any slice. The quote time is the file's quote_time (Cboe: feed time
+    minus its 15-minute delay; Yahoo: fetch time), or the fetch time in files
+    recorded before quote_time existed."""
     df = pd.read_csv(path, dtype={"expiry": str, "root": str})
     d = df[df["expiry"] == expiry]
     if d.empty:
         raise LookupError(f"no {expiry} expiry in {path}")
     chain = d.rename(columns={"open_interest": "openInterest"})
     calls, puts = chain[chain["is_call"].astype(bool)], chain[~chain["is_call"].astype(bool)]
-    return build_slice(calls, puts, expiry, float(df["spot"].iloc[0]), as_of=pd.Timestamp(df["fetched_at"].iloc[0]))
+    as_of = df["quote_time" if "quote_time" in df else "fetched_at"].iloc[0]
+    return build_slice(calls, puts, expiry, float(df["spot"].iloc[0]), as_of=pd.Timestamp(as_of))
 
 
 def load_slice(path) -> Slice:

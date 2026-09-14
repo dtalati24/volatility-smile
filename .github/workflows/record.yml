@@ -4,10 +4,12 @@ name: Record option boards
 
 on:
   schedule:
-    # 13:00-21:15 UTC on weekdays covers 09:30-16:00 New York in summer and
-    # winter time; record.py skips runs outside 09:25-16:20 New York.
-    - cron: "*/15 13-20 * * 1-5"
-    - cron: "0,15 21 * * 1-5"
+    # 13:07-21:07 UTC on weekdays covers 09:30-16:00 New York in summer and
+    # winter time; record.py skips runs outside 09:25-16:20 New York. Off the
+    # quarter hours: GitHub delays or drops scheduled runs most at busy times
+    # such as the top of the hour.
+    - cron: "7,22,37,52 13-20 * * 1-5"
+    - cron: "7 21 * * 1-5"
   workflow_dispatch:
     inputs:
       force:
