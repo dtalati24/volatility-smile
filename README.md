@@ -32,7 +32,7 @@ detail is in [`docs/`](docs).
 ```bash
 py -3.14 -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"
-.venv/Scripts/python -m pytest -p no:warnings      # 213 tests, about 30-45 s
+.venv/Scripts/python -m pytest -p no:warnings      # 227 tests, about 20-30 s
 .venv/Scripts/python app/server.py                 # Smile Board on http://127.0.0.1:8050
 ```
 
@@ -62,17 +62,20 @@ points, spline with 3 knots.
 | RUT 1 month | 78 | 0.029 | **0.026** | 0.086 |
 | RUT 3 months | 46 | 1.341 | **1.311** | 1.397 |
 
-Bell fit time (bells at the final smile's delta), best of several runs:
+Whole calibration time (fit the spline, then the bells), best of 40 runs on
+a laptop:
 
-| Slice | General least squares (before) | Fast fitter |
-|---|---|---|
-| SPX 1 week | 2,063 ms | 18.8 ms |
-| SPX 1 month | 1,678 ms | 20.6 ms |
-| SPX 3 months | 889 ms | 13.1 ms |
-| RUT, 3 expiries | 465-940 ms | 2.5-7.1 ms |
+| Slice | Quotes | Spline + bells, final delta | Spline + bells, spline delta |
+|---|---|---|---|
+| SPX 1 week | 156 | 4.0 ms | 0.5 ms |
+| SPX 1 month | 203 | 2.8 ms | 0.6 ms |
+| SPX 3 months | 118 | 2.3 ms | 0.5 ms |
+| RUT 1 week | 79 | 1.5 ms | 0.5 ms |
+| RUT 1 month | 78 | 1.7 ms | 0.5 ms |
+| RUT 3 months | 46 | 2.7 ms | 0.5 ms |
 
-70-290× faster, same answer (buttons within 0.00005 vol points). The spline
-takes 0.2-0.5 ms, so a whole refit is about 20 ms on SPX.
+The fast fitter gives the same answer as general least squares (buttons
+within 0.00005 vol points).
 
 Near-the-money bid/ask spreads on the SPX 1-month slice are 0.11-0.18 vol
 points, so the spline + bells fit sits inside the spread for most strikes.
@@ -121,8 +124,10 @@ drive its error.
   carry on at the lifted level instead of dropping back onto the spline.
 - **Bells at the final smile's delta** (default): u uses the finished vol,
   so every node sits at its true delta. Each strike's vol is therefore solved
-  per strike: scan the range the bells can reach to bracket every solution,
-  then safeguarded Newton. More than one solution raises `AmbiguousVolError`.
+  per strike: a cheap bound proves most strikes have exactly one solution
+  (86-100% on the saved slices); the rest are scanned over the range the
+  bells can reach. Then safeguarded Newton. More than one solution raises
+  `AmbiguousVolError`.
   The alternative, **bells at the spline's delta**, is explicit and always
   unique.
 
@@ -140,8 +145,8 @@ Objective, with the spline fixed:
     so the sensitivity is
     `d vol_i / d button_j = bell_j(u_i) / (1 - g_i)`,
     `g_i = (bell slopes . buttons) * d2 / vol`.
-    Vols between steps come from Newton warm-started at the last vols; the
-    final answer is checked with the full scan.
+    Vols between steps come from Newton started at the linear prediction
+    (vol + J × step); the final answer is checked with the full solve.
   - Hands over to the general solver, with the reason recorded, when its
     maths does not apply (vol floor binds, ambiguous vol, g ≥ 1, no
     convergence).
@@ -242,7 +247,13 @@ points across the strikes while the spline's are noise around 0.
 |---|---|
 | General least squares (scipy, finite differences) | worked, 1-2 s per SPX fit; kept as reference and fallback |
 | Frozen-delta linear re-solves (fixed point) | rejected: same RMSE but buttons up to 0.08 vol points off the true least squares minimum |
-| **Linear solve / Gauss-Newton with analytic Jacobian** | **adopted**: same answer as scipy, ~20 ms |
+| **Linear solve / Gauss-Newton with analytic Jacobian** | **adopted**: same answer as scipy, ~20 ms at first |
+| Profiling that fit | over half the time was the uniqueness scan (257 trial vols per strike), the rest numpy call overhead |
+| **Proving uniqueness with a bound** (the gap's slope stays below 0 across the reachable vols) | **adopted**: 86-100% of strikes skip the scan; identical vols and ambiguity results on random cases |
+| **Less overhead** (cached widths, one exponential for heights and slopes, no re-validation inside the solver) and **Newton started from the linear prediction** | **adopted**: with the bound, 2-4 ms per SPX fit, same buttons |
+| Tighter per-strike vol ranges in numpy | rejected: the extra work cost more than the scans it saved |
+| Looser convergence tolerance | rejected: saved at most one step, no measurable gain |
+| Compiled kernels (numba) | tested at 0.3-2 ms per fit with identical buttons; not adopted for now: a new dependency, a compile delay per process, and a second implementation to keep in step |
 | Step tolerance 1e-9 | too tight: below the objective's rounding noise, a converged fit looked stuck; 1e-7 |
 | Newton accepting any in-bracket step | a review found it could bounce between two vols and return a non-root; rtsafe halving rule + bisection safety net |
 | Fitting every button exactly | buttons no quote can see went to ±20 vol points on noise; held at their start |
@@ -275,7 +286,7 @@ points across the strikes while the spline's are noise around 0.
 
 ## Testing and review
 
-- **213 tests** (pytest): hand-computed values, independent solvers (brentq)
+- **227 tests** (pytest): hand-computed values, independent solvers (brentq)
   for per-strike vols, finite differences for the Jacobian, fast vs general
   fitter on every saved slice, recovery of known buttons, every hand-over
   path, the web API end to end.

@@ -70,17 +70,22 @@ node at `u_i` sits exactly at a delta.
   (`strike_vol`):
   1. Every solution lies between `max(0, base - sum|buttons|)` and
      `base + sum|buttons|`, since the bells move vol by at most the sum of the
-     buttons. Trial vols across that range, no further apart than 1/256 of
-     the top, bracket each solution. More than one bracket raises
-     `AmbiguousVolError`.
-  2. Newton steps inside the bracket, halving instead whenever a step would
-     leave it, until the gap is below 1e-15.
+     buttons.
+  2. **Proof of one solution** (`_one_solution`): if the gap's slope stays
+     below 0 over that whole range, the strike has exactly one solution. The
+     slope is g − 1 with g = (bell slopes · buttons) × d2 / vol, bounded by
+     the largest bell slopes over the deltas the strike can reach
+     (`_u_span`, `_max_abs_slope`) times the largest |d2 / vol| (at an end of
+     the range). 86-100% of strikes on the saved slices pass.
+  3. **Scan** for the rest: trial vols across the range, no further apart
+     than 1/256 of the top, bracket each solution. More than one bracket
+     raises `AmbiguousVolError`.
+  4. Newton steps inside the bracket, halving instead whenever a step would
+     leave it or does not shrink fast enough, until the gap is below 1e-15.
 
-  About 7 ms for the 203 quotes of the one-month SPX slice (was 37 ms with a
-  scan from 0 and 64 bisections; same vols to 1e-15 and the same ambiguity
-  results on 36 random button sets). Simple repetition (vol → delta → vol)
-  does not work: on a one-month SPX slice it already fails to settle with
-  ±0.75 vol point alternating buttons.
+  Under 1 ms for the 203 quotes of the one-month SPX slice. Simple
+  repetition (vol → delta → vol) does not work: on a one-month SPX slice it
+  already fails to settle with ±0.75 vol point alternating buttons.
 
   `strike_vol_near(..., guess)` runs step 2 alone from a guess (the vols for
   nearby buttons): much faster, but with no ambiguity check. The fitter uses

@@ -138,22 +138,44 @@ it.
 
 ### Speed
 
-Bell fit times on this PC, best of several runs, 3 knots (ms):
+Whole calibration (spline fit + bell fit), 3 knots, best of 40 runs on a
+laptop (timings on it vary by up to 2x between runs):
 
-| Slice | Quotes | Fast, base delta | Fast, final delta | Scipy, final delta | Before (scipy, 2026-09-13) |
-|---|---|---|---|---|---|
-| SPX 1 week | 156 | 0.3 | 18.8 | 779 | 2,063 |
-| SPX 1 month | 203 | 0.8 | 20.6 | 494 | 1,678 |
-| SPX 3 months | 118 | 1.1 | 13.1 | 131 | 889 |
-| RUT 1 week | 79 | 0.3 | 2.5 | 46 | 465 |
-| RUT 1 month | 78 | 0.3 | 3.2 | 59 | 939 |
-| RUT 3 months | 46 | 0.6 | 7.1 | 124 | 940 |
+| Slice | Quotes | Spline + bells, final delta | Spline + bells, spline delta |
+|---|---|---|---|
+| SPX 1 week | 156 | 4.0 ms | 0.5 ms |
+| SPX 1 month | 203 | 2.8 ms | 0.6 ms |
+| SPX 3 months | 118 | 2.3 ms | 0.5 ms |
+| RUT 1 week | 79 | 1.5 ms | 0.5 ms |
+| RUT 1 month | 78 | 1.7 ms | 0.5 ms |
+| RUT 3 months | 46 | 2.7 ms | 0.5 ms |
 
-The spline takes 0.2-0.5 ms, so a whole Refit (spline + bells, final delta)
-is about 20 ms on SPX, 70-290x faster than before. "Before" is the committed
-version before this change; the scipy column is faster than it because the
-per-strike vol solve is now faster too. `scripts/fit_slices.py` prints the
-fast and scipy times for each saved slice.
+What makes the final-delta fit fast, measured on the SPX 1-month slice:
+
+1. **Gauss-Newton with the analytic Jacobian** instead of finite differences
+   (see above): about 1.7 s -> 20 ms.
+2. **No scan for strikes with provably one solution.** Profiling showed over
+   half of those 20 ms in the final uniqueness check, a 257-vol scan per
+   strike. `bells._one_solution` bounds the gap's slope over every vol a
+   strike can reach,
+
+       |g| <= sum_j |button_j| * max |bell_j slope| over the reachable deltas * max |d2 / vol|,
+
+   and where that is below 1 the gap falls all the way, so there is exactly
+   one solution. 86-100% of strikes on the saved slices qualify; only the
+   rest are scanned. Tests check it against dense scans and against scanning
+   every strike (same vols and ambiguity results).
+3. **Less numpy overhead:** bell widths cached, one exponential for bell
+   heights and slopes, no input re-validation inside the solver loops.
+4. **Newton started from the linear prediction** vol + J × step between
+   Gauss-Newton steps, so each per-strike solve needs fewer iterations.
+
+Tried and not used: tighter per-strike vol ranges (in numpy the extra work
+cost more than it saved), a looser convergence tolerance (at most one step
+saved), and compiled numba kernels (0.3-2 ms per fit with identical buttons,
+but a new dependency, a compile delay per process and a second
+implementation to maintain). `scripts/fit_slices.py` prints the fast and
+scipy bell fit times for each saved slice.
 
 ### Automatic fitter and stale spline
 

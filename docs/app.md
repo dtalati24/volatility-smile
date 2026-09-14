@@ -39,7 +39,7 @@ from other machines.
   nodes plus a margin; tick to start from every quote.
 - Stats: forward, tau, quote time, RMSE against the mids in vol points
   (spline alone, the drawn smile with your offsets, SVI), and how the last
-  bell fit went: its time and solver, e.g. `bells fit 18.5 ms (fast)`, or
+  bell fit went: its time and solver, e.g. `bells fit 2.8 ms (fast)`, or
   `scipy after fast: <reason>` when the fast solver handed over
   ([calibration.md](calibration.md#fast-solver-default)).
 - **Stale banner** (amber), after an automatic fit: the spline looks stale

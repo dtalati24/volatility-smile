@@ -169,9 +169,11 @@ def _fit_fast(K, target, base, F, tau, cfg, prev, stiffness, free):
     vol = vols(x, base + B @ x)
     objective = _objective(vol, target, x, prev, stiffness)
     for _ in range(FAST_ITERATIONS):
-        if np.any(base + bells.bell_matrix(-black76.d1(F, K, tau, vol), cfg) @ x <= 0.0):
+        if np.any(vol <= 0.0):
             return None, "vol floor at 0 binds"
         J, g = bells.vol_sensitivity(K, F, tau, vol, bells.BellParams(*x), cfg)
+        if np.any(base + (J * (1.0 - g)[:, None]) @ x <= 0.0):  # J (1 - g) is the bell heights
+            return None, "vol floor at 0 binds"
         if np.any(g >= 1.0):
             return None, "vol sensitivity blows up (g >= 1)"
         step = _step(J, vol - target, x, prev, stiffness, free)
@@ -181,7 +183,7 @@ def _fit_fast(K, target, base, F, tau, cfg, prev, stiffness, free):
             if np.max(np.abs(step)) < FAST_STEP:  # halved to nothing without improving: stuck, not converged
                 return None, "objective would not fall"
             trial = np.clip(x + step, -BUTTON_LIMIT, BUTTON_LIMIT)
-            trial_vol = vols(trial, vol)
+            trial_vol = vols(trial, vol + J @ (trial - x))  # start Newton from the linear prediction
             trial_objective = _objective(trial_vol, target, trial, prev, stiffness)
             if trial_objective <= objective * (1.0 + 1e-12):  # allow for rounding in the vol solves
                 break

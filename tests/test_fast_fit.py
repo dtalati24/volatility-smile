@@ -331,3 +331,133 @@ def test_every_returned_vol_is_self_consistent_on_hard_random_cases():
         for vol in results:
             u = -bells.d1(F, K, tau, np.maximum(vol, 1e-300))
             assert np.max(np.abs(np.maximum(0.0, base + bells.vol_change(u, p)) - vol)) < 1e-13
+
+
+# ---------------------------------------------------------------- the no-scan shortcut
+
+def test_certified_strikes_really_have_one_solution():
+    # Wherever the bound says "one solution", a dense scan shows the gap falling all the way.
+    rng = np.random.default_rng(5)
+    certified = 0
+    for _ in range(120):
+        tau = rng.uniform(0.01, 2.0)
+        K = F * np.exp(rng.uniform(-0.8, 0.4, 20))
+        base = rng.uniform(0.08, 0.5, 20)
+        p = BellParams(*rng.normal(0.0, rng.choice([0.002, 0.005, 0.02]), 11))
+        x = np.array(astuple(p))
+        low, top = bells._range(base, x)
+        for i in np.flatnonzero(bells._one_solution(F, K, tau, x, BellConfig(), low, top)):
+            vol = np.linspace(low[i], top[i], 2001)
+            u = -bells.d1(F, np.full(vol.shape, K[i]), tau, vol)
+            gap = np.maximum(0.0, base[i] + bells.vol_change(u, p)) - vol
+            assert np.all(np.diff(gap) < 0.0)
+            certified += 1
+    assert certified > 500                                            # the shortcut is really exercised
+
+
+def test_shortcut_gives_the_same_vols_and_ambiguity_as_scanning_every_strike(monkeypatch):
+    rng = np.random.default_rng(9)
+    cases = []
+    for _ in range(300):
+        tau = rng.uniform(0.01, 2.0)
+        K = F * np.exp(rng.uniform(-0.8, 0.4, 30))
+        base = rng.uniform(0.08, 0.5, 30)
+        cases.append((K, tau, base, BellParams(*rng.normal(0.0, rng.choice([0.001, 0.003, 0.008, 0.02]), 11))))
+
+    def solve_all():
+        out = []
+        for K, tau, base, p in cases:
+            try:
+                out.append(bells.strike_vol(K, F, tau, base, p))
+            except bells.AmbiguousVolError:
+                out.append(None)
+        return out
+
+    fast = solve_all()
+    monkeypatch.setattr(bells, "_one_solution", lambda F, k, *args: np.zeros(k.shape, dtype=bool))
+    scanned = solve_all()
+    assert sum(v is None for v in scanned) > 10 and sum(v is not None for v in scanned) > 100
+    for a, b in zip(fast, scanned):
+        assert (a is None) == (b is None)
+        if a is not None:
+            np.testing.assert_allclose(a, b, rtol=0, atol=1e-14)
+
+
+@pytest.mark.parametrize("name", SLICES)
+def test_most_real_strikes_skip_the_scan(name):
+    s = load_slice(DATA / name)
+    K = s.quotes["strike"].to_numpy()
+    base = spline.vol(K, s.forward, fit_base(s))
+    x = np.array(astuple(fit_bells(s, base).buttons))
+    low, top = bells._range(base, x)
+    assert bells._one_solution(s.forward, K, s.tau, x, BellConfig(), low, top).mean() >= 0.85
+
+
+def test_heights_and_slopes_from_one_exponential_match_including_infinite_u():
+    u = np.r_[np.linspace(-4, 4, 81), -np.inf, np.inf]
+    for cfg in (BellConfig(), BellConfig(k=0.7)):
+        heights, slopes = bells._bells_and_slopes(u, cfg)
+        np.testing.assert_array_equal(heights, bells.bell_matrix(u, cfg))
+        np.testing.assert_array_equal(slopes, bells.bell_slopes(u, cfg))
+        assert np.all(np.isfinite(slopes)) and heights[-2, 0] == 1.0 and heights[-1, -1] == 1.0
+        assert heights[-2, 1:].sum() == 0.0 and heights[-1, :-1].sum() == 0.0
+
+
+def test_widths_are_cached_and_read_only():
+    w = bells.widths(BellConfig(k=0.4))
+    assert w is bells.widths(BellConfig(k=0.4))
+    with pytest.raises(ValueError):
+        w[0] = 1.0
+
+
+def test_vol_sensitivity_rejects_a_zero_vol():
+    with pytest.raises(ValueError):
+        bells.vol_sensitivity([F, F], F, TAU, [0.2, 0.0], BellParams(atm=0.01))
+
+
+def test_u_span_covers_every_vol_in_the_range_including_the_turning_point():
+    rng = np.random.default_rng(13)
+    turned = 0
+    for _ in range(300):
+        tau = rng.uniform(0.01, 2.0)
+        K = F * np.exp(rng.uniform(-0.8, 0.8, 1))
+        low = rng.uniform(0.01, 0.5, 1)
+        top = low + rng.uniform(0.001, 0.8, 1)
+        umin, umax = bells._u_span(F, K, tau, low, top)
+        vol = np.linspace(low[0], top[0], 4001)
+        u = -bells.d1(F, np.full(vol.shape, K[0]), tau, vol)
+        assert umin[0] <= u.min() + 1e-12 and umax[0] >= u.max() - 1e-12
+        turned += bool(np.log(F / K[0]) > 0 and low[0] < np.sqrt(2 * np.log(F / K[0]) / tau) < top[0])
+    assert turned > 20                                                # the turning-point case is exercised
+
+
+def test_max_abs_slope_bounds_the_slope_over_any_interval():
+    rng = np.random.default_rng(17)
+    cfg = BellConfig()
+    w = bells.widths(cfg)
+    starts = np.r_[rng.uniform(-3.5, 3.5, 200), bells.NODES - w - 0.01, bells.NODES + w - 0.01]   # incl. just below each peak
+    lengths = np.r_[rng.uniform(0.0, 1.0, 200), np.full(22, 0.02)]
+    umin, umax = starts, starts + lengths
+    bound = bells._max_abs_slope(umin, umax, cfg)
+    for i in range(len(umin)):
+        u = np.linspace(umin[i], umax[i], 2001)
+        exact = np.abs(bells.bell_slopes(u, cfg)).max(axis=0)
+        assert np.all(bound[i] >= exact - 1e-12)
+    # tight at a peak: the interval around node - w reaches the peak value
+    j = 5
+    around = bells._max_abs_slope(np.array([bells.NODES[j] - w[j] - 0.01]), np.array([bells.NODES[j] - w[j] + 0.01]), cfg)
+    assert around[0, j] == pytest.approx(1.0 / (w[j] * np.sqrt(np.e)), rel=1e-12)
+
+
+def test_a_zero_vol_between_steps_hands_over(monkeypatch):
+    s = load_slice(DATA / "spx_2026-10-16_2026-09-11.csv")
+    base = spline.vol(s.quotes["strike"].to_numpy(), s.forward, fit_base(s))
+    real = bells.strike_vol_near
+
+    def with_a_zero(*args, **kwargs):
+        vol = real(*args, **kwargs).copy()
+        vol[0] = 0.0
+        return vol
+    monkeypatch.setattr(bells, "strike_vol_near", with_a_zero)
+    got = fit_bells(s, base)
+    assert (got.method, got.handover) == ("scipy", "vol floor at 0 binds")
